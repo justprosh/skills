@@ -414,6 +414,49 @@ test("a refused grant costs a login only once the refusal has stood", async (t) 
   });
 });
 
+test("Rauthy's dead-refresh 404 costs exactly one new browser flow", async (t) => {
+  await withFake(t, {}, async ({ fake, dir, spawnBridge }) => {
+    const first = spawnBridge();
+    await authorize(first, dir);
+    await first.stop();
+
+    const before = readStore(dir).tokens.refresh_token;
+    const s = readStore(dir);
+    s.tokens.expires_at = Date.now() - 1000;
+    writeFileSync(storeFile(dir), JSON.stringify(s));
+    await fake.control({
+      refreshStatus: 404,
+      refreshError: "NotFound",
+      refreshMessage: "Refresh Token does not exist",
+      revoke_access: true,
+    });
+
+    const held = spawnBridge();
+    const refusal = await held.call("initialize", 1, INIT_PARAMS);
+    assert.equal(authorizeUrlIn(refusal.error?.message), null,
+      "the first dead-grant refusal must still observe the login grace");
+    assert.equal(readStore(dir).tokens.refresh_token, before,
+      "the existing DeadGrant path must keep the grant through the grace");
+    await held.stop();
+
+    ageRefusal(dir);
+    const retry = spawnBridge();
+    const firstPending = await retry.call("initialize", 1, INIT_PARAMS);
+    const url = authorizeUrlIn(firstPending.error?.message);
+    assert.ok(url, `the persisted refusal must lead to a new authorization: ${JSON.stringify(firstPending)}`);
+    const secondPending = await retry.call("initialize", 2, INIT_PARAMS);
+    assert.equal(authorizeUrlIn(secondPending.error?.message), url,
+      "a second call must join the one browser flow already standing");
+
+    const res = await fetch(url, { redirect: "follow" });
+    assert.equal(res.status, 200, "the replacement authorization must complete");
+    await res.text();
+    await waitFor(() => readStore(dir).tokens?.refresh_token !== before,
+      "the replacement grant to reach the store");
+    assert.equal(fake.state.counts.authorize, 2, "the dead grant must cost exactly one new browser flow");
+  });
+});
+
 test("a request that left and never came back is reported as an unknown outcome", async (t) => {
   // The two halves of the network axis mean opposite things to a caller. A call
   // that never went out applied nothing; a call that went out and lost its answer
