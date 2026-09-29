@@ -1270,6 +1270,31 @@ function createLogin(say) {
   };
 }
 
+// js/opencode/runends.ts
+var PLACELESS = /* @__PURE__ */ new Set([
+  "iskron_look",
+  "iskron_orient",
+  "iskron_search",
+  "iskron_semantic_search",
+  "iskron_history",
+  "iskron_me"
+]);
+function createRunEnds() {
+  const ended = /* @__PURE__ */ new Map();
+  return {
+    mark: (session, of) => void ended.set(session, of ?? null),
+    stood: (session) => void ended.delete(session),
+    guard(session, name, args) {
+      if (!ended.has(session) || name === STAND_TOOL || PLACELESS.has(name)) return;
+      if (args.action === "?" || name === "iskron_channel" && args.action === "list") return;
+      const of = ended.get(session)?.name ?? "<место запустившего>";
+      throw new Error(
+        `Отказано (плагин): прогон этой дочерней сессии кончился, её место-спутник отпущено — ${name} подписал бы запись местом запустившего. Встань заново: iskron_stand(realm, karta, satellite_of="${of}"), затем повтори вызов.`
+      );
+    }
+  };
+}
+
 // js/opencode/status.ts
 function statusLines(path, builds, login, state2, sessions, spare) {
   return [
@@ -1357,6 +1382,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     return slot;
   }
   const directoryOf = (sessionID) => sessionDirectory(ctx, sessionID);
+  const runEnds = createRunEnds();
   const keeper = createKeeper({
     say,
     tell: (root, text, child) => onChannel(root, { logger: "iskron-channel", data: { kind: "resumed", text } }, !!child),
@@ -1472,6 +1498,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
         // JSON Schema сервера без паспорта диалекта — той же срезкой, что у pi.
         input: toParameters(t.inputSchema),
         async execute(input, tool) {
+          runEnds.guard(String(tool.sessionID), name, input ?? {});
           const slot = await slotFor(String(tool.sessionID));
           slot.busy++;
           try {
@@ -1516,6 +1543,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     const result = await slot.bridge.request("tools/call", { name, arguments: args });
     if (result?.isError) throw new Error(textOf2(result) || `${name}: отказ без текста`);
     if (standsBy(name, args)) keeper.stood(slot);
+    if (standsBy(name, args)) runEnds.stood(sessionID);
     return { content: textOf2(result) };
   }
   if (state2.listed.length)
@@ -1586,7 +1614,11 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
     forget,
-    ended: (session) => void (slots.get(session)?.child && forget(session)),
+    ended(session) {
+      if (!slots.get(session)?.child) return;
+      runEnds.mark(session, slots.get(session)?.satelliteOf);
+      forget(session);
+    },
     stop() {
       stopped = true;
       clearInterval(reaper);
@@ -2052,9 +2084,10 @@ async function setup(ctx) {
             break;
           // Конец прогона: мост дочерней сессии уходит с её местом-спутником (#6361).
           // Форма события — по типам @opencode/schema (плагин 2.0.4), живьём не снята.
+          // interrupted не гасит: его смысл не наблюдён, а прерыванием может быть и
+          // steer, которым плагин сам вкладывает кадры, — ребёнок погас бы посреди работы.
           case "session.execution.succeeded":
           case "session.execution.failed":
-          case "session.execution.interrupted":
             if (id) half.ended(id);
             break;
           default:

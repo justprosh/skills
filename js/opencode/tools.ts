@@ -37,6 +37,7 @@ import { createKeeper, type KeptSlot, takeLostMarker, WATCH_MS, writeLostMarker 
 import { createLauncher } from "./launch.ts";
 import { createLogin } from "./login.ts";
 import type { Context } from "./plugin.ts";
+import { createRunEnds } from "./runends.ts";
 import { asSatellite, heldPlace, type SatelliteSlot, STAND_TOOL, standsBy } from "./satellite.ts";
 import { statusLines } from "./status.ts";
 
@@ -166,6 +167,7 @@ export async function setupTools(
   }
 
   const directoryOf = (sessionID: string) => sessionDirectory(ctx, sessionID);
+  const runEnds = createRunEnds(); // кончившиеся дети: запись с места — отказ вслух (#6361)
   const keeper = createKeeper({
     say,
     tell: (root, text, child) =>
@@ -315,6 +317,7 @@ export async function setupTools(
         // JSON Schema сервера без паспорта диалекта — той же срезкой, что у pi.
         input: toParameters(t.inputSchema),
         async execute(input, tool) {
+          runEnds.guard(String(tool.sessionID), name, input ?? {}); // не мостом корня (#6361)
           const slot = await slotFor(String(tool.sessionID));
           // Вызов в полёте — занятость: мост посреди вызова жнецу не отдаётся,
           // а простой считается от конца вызова, не от его начала.
@@ -390,6 +393,7 @@ export async function setupTools(
     // Отказ тула сигналится броском — так OpenCode показывает его отказом.
     if (result?.isError) throw new Error(textOf(result) || `${name}: отказ без текста`);
     if (standsBy(name, args)) keeper.stood(slot); // ответ тула — наблюдаемое событие держания
+    if (standsBy(name, args)) runEnds.stood(sessionID); // встал заново — запись снова своим мостом
     return { content: textOf(result) };
   }
   if (state.listed.length)
@@ -471,7 +475,11 @@ export async function setupTools(
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
     forget,
-    ended: (session) => void (slots.get(session)?.child && forget(session)),
+    ended(session) {
+      if (!slots.get(session)?.child) return;
+      runEnds.mark(session, slots.get(session)?.satelliteOf);
+      forget(session);
+    },
     stop() {
       stopped = true;
       clearInterval(reaper);

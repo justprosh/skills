@@ -169,9 +169,10 @@ async function setup(ctx: Context): Promise<() => void> {
             break;
           // Конец прогона: мост дочерней сессии уходит с её местом-спутником (#6361).
           // Форма события — по типам @opencode/schema (плагин 2.0.4), живьём не снята.
+          // interrupted не гасит: его смысл не наблюдён, а прерыванием может быть и
+          // steer, которым плагин сам вкладывает кадры, — ребёнок погас бы посреди работы.
           case "session.execution.succeeded":
           case "session.execution.failed":
-          case "session.execution.interrupted":
             if (id) half.ended(id);
             break;
           default:
