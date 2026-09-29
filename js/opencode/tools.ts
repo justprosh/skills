@@ -77,6 +77,8 @@ const hhmm = (): string => new Date().toTimeString().slice(0, 5);
 export interface ToolsHalf {
   /** Сессия умерла — её мост отпускается вместе со стоянием. */
   forget(session: string): void;
+  /** Прогон сессии кончился — мост дочерней уходит с её местом-спутником (#6361); корень живёт сессией. */
+  ended(session: string): void;
   /** Первый промпт сессии — строка запуска с делом исполняется до хода модели (launch.ts). */
   launch(session: string, text: string): Promise<string | null>;
   stop(): void;
@@ -97,7 +99,7 @@ export async function setupTools(
         ". Задай ISKRON_BRIDGE_PATH или поставь мост скиллом establish-mcp.",
       "error",
     );
-    return { forget() {}, launch: async () => null, stop() {}, bridgeOf: () => null };
+    return { forget() {}, ended() {}, launch: async () => null, stop() {}, bridgeOf: () => null };
   }
   const path = found.path;
   const builds = buildsLine(path, import.meta.url);
@@ -455,18 +457,21 @@ export async function setupTools(
     },
   });
 
+  function forget(session: string): void {
+    launcher.forget(session);
+    keeper.forget(session);
+    const slot = slots.get(session);
+    if (!slot) return;
+    slots.delete(session);
+    slot.ownStop = true;
+    slot.bridge.stop(); // свёртка моста отпускает стояние: ключ, сокет, занятость
+  }
+
   return {
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
-    forget(session) {
-      launcher.forget(session);
-      keeper.forget(session);
-      const slot = slots.get(session);
-      if (!slot) return;
-      slots.delete(session);
-      slot.ownStop = true;
-      slot.bridge.stop(); // свёртка моста отпускает стояние: ключ, сокет, занятость
-    },
+    forget,
+    ended: (session) => void (slots.get(session)?.child && forget(session)),
     stop() {
       stopped = true;
       clearInterval(reaper);

@@ -94,6 +94,7 @@ async function setup(ctx: Context): Promise<() => void> {
 
   let half: Awaited<ReturnType<typeof setupTools>> = {
     forget() {},
+    ended() {},
     launch: async () => null,
     stop() {},
     bridgeOf: () => null,
@@ -165,6 +166,13 @@ async function setup(ctx: Context): Promise<() => void> {
             break;
           case "session.idle":
             if (id) ch?.taken(id);
+            break;
+          // Конец прогона: мост дочерней сессии уходит с её местом-спутником (#6361).
+          // Форма события — по типам @opencode/schema (плагин 2.0.4), живьём не снята.
+          case "session.execution.succeeded":
+          case "session.execution.failed":
+          case "session.execution.interrupted":
+            if (id) half.ended(id);
             break;
           default:
             usage.onEvent(ev);

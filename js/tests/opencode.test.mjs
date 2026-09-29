@@ -1858,6 +1858,48 @@ test("a child session of a standing root raises its bridge as a satellite of the
   }
 });
 
+// The satellite's place lives by the run (#6361): OpenCode keeps a child session
+// after its run, so the plugin ends the child's bridge on the end of the child's
+// execution — the bridge winds down and leaves the place, the hearing watch sends
+// it nothing more, and no bridge is raised for it again. The root's own end of
+// execution takes nothing down. The event's form is from the types of
+// @opencode/schema (plugin 2.0.4) only: data.sessionID; a live OpenCode's is not observed.
+test("the end of a child session's run takes its bridge down: the watch raises nothing for it, the root's bridge stays", async () => {
+  const b = bridgeEnv("run-end", {
+    ISKRON_BRIDGE_WATCH_MS: 200,
+    FB_TOOLS: JSON.stringify([
+      { name: "iskron_stand", description: "Стояние.", inputSchema: { type: "object" } },
+    ]),
+  });
+  const rec = await plugin(b.env, {
+    sessions: [
+      { id: "root", location: { directory: "/work/root" } },
+      { id: "child", parentID: "root", location: { directory: "/work/child" } },
+    ],
+  });
+  try {
+    await until(() => rec.tools().has("iskron_stand"), "the stand tool", 8000);
+    await rec.call("iskron_stand", { realm: "nks-dev", karta: "#931" }, "root");
+    const rootPid = pidOf(b.log);
+    const place = { realm: "@nks/nks-dev", karta: "931", name: "host.repo.opus-5" };
+    appendFileSync(`${b.events}.${rootPid}`, event("held", { key: "k-root", place }));
+    await delay(400); // the fake bridge relays event lines every 40 ms
+    await rec.call("iskron_stand", { realm: "nks-dev" }, "child");
+    const childPid = pidsOf(b.log)[1];
+    assert.ok(childPid && alive(childPid), "the child stands on a bridge of its own");
+    for (const type of ["session.execution.succeeded", "session.execution.failed"])
+      rec.emit({ type, data: { sessionID: "root" } });
+    rec.emit({ type: "session.execution.succeeded", data: { sessionID: "child" } });
+    await until(() => !alive(childPid), "the child's bridge to end with its run");
+    await delay(700); // more than three ticks of the hearing watch
+    assert.ok(alive(rootPid), "the root's end of execution takes nothing down");
+    assert.equal(pidsOf(b.log).length, 2, "the watch raises no bridge for the ended child");
+    assert.ok(!/слух потерян/.test(rec.said()), "the plugin's own stop is not a lost hearing");
+  } finally {
+    await rec.stop();
+  }
+});
+
 // A subagent launched with a case (#6078, the owner's word): the child session
 // whose FIRST prompt begins «start <graph> <role> <case №N>» stands as a satellite
 // of the root's place in the named role and joins the case — inside the prompt

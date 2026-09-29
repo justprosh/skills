@@ -1299,6 +1299,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
       "error"
     );
     return { forget() {
+    }, ended() {
     }, launch: async () => null, stop() {
     }, bridgeOf: () => null };
   }
@@ -1572,18 +1573,20 @@ async function setupTools(ctx, say, onChannel, rootOf) {
       }
     }
   });
+  function forget(session) {
+    launcher.forget(session);
+    keeper.forget(session);
+    const slot = slots.get(session);
+    if (!slot) return;
+    slots.delete(session);
+    slot.ownStop = true;
+    slot.bridge.stop();
+  }
   return {
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
-    forget(session) {
-      launcher.forget(session);
-      keeper.forget(session);
-      const slot = slots.get(session);
-      if (!slot) return;
-      slots.delete(session);
-      slot.ownStop = true;
-      slot.bridge.stop();
-    },
+    forget,
+    ended: (session) => void (slots.get(session)?.child && forget(session)),
     stop() {
       stopped = true;
       clearInterval(reaper);
@@ -1980,6 +1983,8 @@ async function setup(ctx) {
   let half = {
     forget() {
     },
+    ended() {
+    },
     launch: async () => null,
     stop() {
     },
@@ -2044,6 +2049,13 @@ async function setup(ctx) {
             break;
           case "session.idle":
             if (id) ch?.taken(id);
+            break;
+          // Конец прогона: мост дочерней сессии уходит с её местом-спутником (#6361).
+          // Форма события — по типам @opencode/schema (плагин 2.0.4), живьём не снята.
+          case "session.execution.succeeded":
+          case "session.execution.failed":
+          case "session.execution.interrupted":
+            if (id) half.ended(id);
             break;
           default:
             usage.onEvent(ev);
