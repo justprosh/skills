@@ -882,8 +882,8 @@ test("iskron_stand: skills of a flat install — the set's bridge version and th
   assert.notEqual(lockFold(lock), sent[0].attrs.skills.stamp, "the stamp follows the lock");
 });
 
-// The set is named by where it came from (#6211; the lead's word — case №39
-// [5773]): the lock's establish-mcp entry carries the bridge, so its source is
+// The set is named by where it came from (nks-dev graph: #6211, #6226): the
+// lock's establish-mcp entry carries the bridge, so its source is
 // the set's name, and only that source's entries fold into the stamp — a fork
 // is not called iskron-ai/skills, and a stranger set beside it does not move it.
 test("iskron_stand: skills of a flat install from a fork — name and stamp follow the establish-mcp entry's source", async (t) => {

@@ -39,8 +39,8 @@ const sha8 = (h: ReturnType<typeof createHash>): string => h.digest("hex").slice
 
 /**
  * Плоская установка: источник набора — source записи establish-mcp в
- * .skill-lock.json рядом с корнем (она несёт мост; решение ведущего — дело №39
- * [5773]), без неё — SET; stamp — свёртка skillFolderHash записей этого источника.
+ * .skill-lock.json рядом с корнем (она несёт мост; граф nks-dev: #6226), без
+ * неё — SET; stamp — свёртка skillFolderHash записей этого источника.
  */
 function lockSet(root: string): { name: string; stamp: string | null } {
   try {
