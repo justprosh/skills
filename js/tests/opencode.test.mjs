@@ -365,7 +365,9 @@ test("the plugin hands OpenCode's own version to the bridge it raises", async ()
     app: { name: "opencode", version: "2.0.18", channel: "latest" },
   });
   try {
-    await serverTools(rec);
+    // The tools may already stand from the previous list (cache), before the
+    // bridge has written its first line — wait for the bridge, not the tools.
+    await until(() => existsSync(envLog), "the raised bridge");
     const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(seen[0]?.harness_version, "2.0.18", JSON.stringify(seen));
   } finally {
@@ -376,7 +378,7 @@ test("the plugin hands OpenCode's own version to the bridge it raises", async ()
     app: null,
   });
   try {
-    await serverTools(bare);
+    await until(() => existsSync(bareLog), "the raised bridge");
     const seen = readFileSync(bareLog, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(seen[0]?.harness_version, null, "no app — the plugin claims no version");
   } finally {
