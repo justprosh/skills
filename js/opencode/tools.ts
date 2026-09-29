@@ -19,7 +19,6 @@
 // всегда), а список с сервера приходит фоном и подменяется через
 // ctx.tool.reload() — сколько бы ни длился вход человека.
 import { Bridge, toParameters } from "../shared/bridge-client.ts";
-import { HARNESS_VERSION_ENV } from "../shared/clients.ts";
 import {
   authDir,
   buildsLine,
@@ -33,6 +32,7 @@ import {
   textOf,
   writeCache,
 } from "./bridge-io.ts";
+import { hostEnvOf, sessionDirectory } from "./host.ts";
 import { createKeeper, type KeptSlot, takeLostMarker, WATCH_MS, writeLostMarker } from "./keep.ts";
 import { createLauncher } from "./launch.ts";
 import { createLogin } from "./login.ts";
@@ -73,15 +73,6 @@ export interface Slot extends KeptSlot, SatelliteSlot {
 }
 
 const hhmm = (): string => new Date().toTimeString().slice(0, 5);
-
-/**
- * Версия самого OpenCode — мосту окружением (#6226): клиент рукопожатия — этот
- * плагин, и его clientInfo.version не версия хоста. Нет app — ничего не объявляем.
- */
-function hostEnvOf(ctx: Context): Record<string, string> {
-  const v = (ctx as { app?: { version?: unknown } | null }).app?.version;
-  return typeof v === "string" && v.trim() ? { [HARNESS_VERSION_ENV]: v.trim() } : {};
-}
 
 export interface ToolsHalf {
   /** Сессия умерла — её мост отпускается вместе со стоянием. */
@@ -171,6 +162,7 @@ export async function setupTools(
     return slot;
   }
 
+  const directoryOf = (sessionID: string) => sessionDirectory(ctx, sessionID);
   const keeper = createKeeper({
     say,
     tell: (root, text, child) =>
@@ -210,21 +202,6 @@ export async function setupTools(
     } catch {
       shake(slot);
       await slot.ready;
-    }
-  }
-
-  /**
-   * Директория сессии — рабочая копия, над которой идёт ход: у SessionInfo
-   * OpenCode 2 она в location.directory (@opencode/plugin 2.0.4). Нет её —
-   * пусто, мост выведет из своего cwd.
-   */
-  async function directoryOf(sessionID: string): Promise<string | null> {
-    try {
-      const res: any = await ctx.session.get({ sessionID } as any);
-      const dir = res?.location?.directory ?? res?.data?.location?.directory;
-      return typeof dir === "string" && dir.trim() ? dir : null;
-    } catch {
-      return null;
     }
   }
 
