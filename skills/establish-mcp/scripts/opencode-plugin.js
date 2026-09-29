@@ -110,6 +110,7 @@ function isDirectWord(frame) {
 
 // js/shared/clients.ts
 var OPENCODE_CLIENT = "opencode-iskron";
+var HARNESS_VERSION_ENV = "ISKRON_HARNESS_VERSION";
 
 // js/shared/version.ts
 import { createHash } from "node:crypto";
@@ -661,11 +662,12 @@ var Bridge = class {
   get failure() {
     return this.dead;
   }
-  start() {
+  /** env — поверх рантайма: версия хоста для attrs.harness_version (#6226). */
+  start(env = {}) {
     const rt = bridgeRuntime();
     const proc = spawn(rt.bin, [this.bin, ...this.args], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: rt.env
+      env: { ...rt.env, ...env }
     });
     this.proc = proc;
     proc.stdout?.setEncoding("utf8");
@@ -950,6 +952,21 @@ async function refreshToolList(b, state2, reload, say, live) {
       `Искрон: список тулов после смены на сервере не перечитан — ${e.message}`,
       "warning"
     );
+  }
+}
+
+// js/opencode/host.ts
+function hostEnvOf(ctx) {
+  const v = ctx.app?.version;
+  return typeof v === "string" && v.trim() ? { [HARNESS_VERSION_ENV]: v.trim() } : {};
+}
+async function sessionDirectory(ctx, sessionID) {
+  try {
+    const res = await ctx.session.get({ sessionID });
+    const dir = res?.location?.directory ?? res?.data?.location?.directory;
+    return typeof dir === "string" && dir.trim() ? dir : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1321,10 +1338,11 @@ async function setupTools(ctx, say, onChannel, rootOf) {
       },
       args
     );
-    slot.bridge.start();
+    slot.bridge.start(hostEnvOf(ctx));
     shake(slot);
     return slot;
   }
+  const directoryOf = (sessionID) => sessionDirectory(ctx, sessionID);
   const keeper = createKeeper({
     say,
     tell: (root, text, child) => onChannel(root, { logger: "iskron-channel", data: { kind: "resumed", text } }, !!child),
@@ -1354,15 +1372,6 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     } catch {
       shake(slot);
       await slot.ready;
-    }
-  }
-  async function directoryOf(sessionID) {
-    try {
-      const res = await ctx.session.get({ sessionID });
-      const dir = res?.location?.directory ?? res?.data?.location?.directory;
-      return typeof dir === "string" && dir.trim() ? dir : null;
-    } catch {
-      return null;
     }
   }
   async function slotFor(sessionID, touch = true) {
