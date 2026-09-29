@@ -4241,6 +4241,7 @@ var deafWithoutListener = () => !notifiedClient();
 var keptStatus = "";
 var keptBeside = [];
 async function leaveStanding(reason, byWord = false) {
+  if (byWord && CFG.satellite) return leaveSatellite(reason);
   const beside = heldPlaces().filter((p) => !p.primary).map((p) => ({ realm: p.realm, text: readHoldRecord(p.key)?.status ?? "" })).filter((k) => k.text);
   const leaving = heldPlaces().map((p) => p.key);
   const parked2 = parkStanding(reason);
@@ -4254,6 +4255,15 @@ async function leaveStanding(reason, byWord = false) {
   log(`left the standing: ${reason}; ${line}`);
   const which = leaving.length > 1 ? `с мест ${leaving.join(", ")} (сокет канала у них общий)` : `с места ${parked2}`;
   return byWord ? `ушёл ${which}: сокет закрыт, ${line}; адрес, очередь и хуки целы — почта копится; место отпущено словом, само не вернётся — вернуть: iskron_stand тем же именем` : `ушёл ${which}: сокет закрыт, ${line}; адрес, очередь и хуки целы — почта копится и придёт при возвращении (сторож или iskron_stand)`;
+}
+async function leaveSatellite(reason) {
+  const place = heldPlaces()[0]?.key;
+  if (!place) return "мост места не держит — уходить неоткуда";
+  const st = await publishStatus("", void 0, true);
+  releaseStanding(`${reason}: место-спутник отпущено целиком`, true);
+  const line = st.ok ? "занятость снята" : `занятость не снята (${st.body})`;
+  log(`left the satellite place: ${reason}; ${line}`);
+  return `ушёл с места-спутника ${place}: сокет закрыт, ${line}; место отпущено целиком — ни сторож, ни возврат его не поднимут; встать снова — iskron_stand с satellite_of`;
 }
 function returnToStanding(how) {
   if (!resumeStanding()) return false;
