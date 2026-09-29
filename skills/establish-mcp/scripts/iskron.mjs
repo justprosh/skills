@@ -3718,14 +3718,17 @@ function skillsRoot(self = fileURLToPath3(import.meta.url)) {
   return null;
 }
 var sha8 = (h) => h.digest("hex").slice(0, 8);
-function lockStamp(root) {
+function lockSet(root) {
   try {
     const lock = JSON.parse(readFileSync10(join8(dirname4(root), ".skill-lock.json"), "utf8"));
-    const lines = Object.entries(lock.skills ?? {}).filter(([, s2]) => s2?.source === SET && typeof s2.skillFolderHash === "string").map(([n, s2]) => `${n}:${String(s2.skillFolderHash)}
+    const skills = lock.skills ?? {};
+    const own = skills["establish-mcp"]?.source;
+    const name = typeof own === "string" && own.trim() ? own.trim() : SET;
+    const lines = Object.entries(skills).filter(([, s2]) => s2?.source === name && typeof s2.skillFolderHash === "string").map(([n, s2]) => `${n}:${String(s2.skillFolderHash)}
 `).sort();
-    return lines.length ? sha8(createHash4("sha256").update(lines.join(""))) : null;
+    return { name, stamp: lines.length ? sha8(createHash4("sha256").update(lines.join(""))) : null };
   } catch {
-    return null;
+    return { name: SET, stamp: null };
   }
 }
 function treeStamp(root) {
@@ -3759,8 +3762,9 @@ function skillsAttr() {
     version = versionIn(readFileSync10(join8(root, BRIDGE_IN_SET), "utf8")) ?? "unknown";
   } catch {
   }
-  const stamp = lockStamp(root) ?? treeStamp(root);
-  return { name: SET, version, ...stamp ? { stamp } : {} };
+  const lock = lockSet(root);
+  const stamp = lock.stamp ?? treeStamp(root);
+  return { name: lock.name, version, ...stamp ? { stamp } : {} };
 }
 
 // js/bridge/placefields.ts

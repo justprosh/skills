@@ -85,7 +85,9 @@ copyFileSync(SOURCE, COPY);
 // decide that candidate and guarantees a real ~/.iskron-bridge is never touched.
 process.env.HOME = SANDBOX;
 // The pi package as the extension resolves it from its own directory — only its
-// VERSION, the host version the extension hands the bridge (#6226).
+// VERSION, the host version the extension hands the bridge (#6226). The export
+// is from the types of pi-coding-agent 0.85.1 only; a live pi hands the package
+// through its loader's alias, and that path is not observed here.
 const PI_VERSION = "0.85.1-probe";
 const PI_PKG = join(SANDBOX, "node_modules", "@earendil-works", "pi-coding-agent");
 mkdirSync(PI_PKG, { recursive: true });

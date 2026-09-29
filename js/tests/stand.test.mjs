@@ -756,10 +756,12 @@ test("iskron_stand names the place: model and attrs ride connect and register", 
 const SET = "iskron-ai/skills";
 const MINE = /^(?:const|let|var)\s+VERSION\s*=\s*"([^"]+)"/m.exec(readFileSync(FILE, "utf8"))?.[1];
 const sha8 = (s) => createHash("sha256").update(s).digest("hex").slice(0, 8);
-const lockFold = (lock) =>
+// The lock's form (v3, source, skillFolderHash of 40 hex) — observed on the
+// machine fluence (case №39 [3293], [5726]).
+const lockFold = (lock, source = SET) =>
   sha8(
     Object.entries(lock.skills)
-      .filter(([, s]) => s.source === SET)
+      .filter(([, s]) => s.source === source)
       .map(([n, s]) => `${n}:${s.skillFolderHash}\n`)
       .sort()
       .join(""),
@@ -813,6 +815,8 @@ const stand = (bridge) =>
     arguments: { realm: "nks-dev", karta: 931, name: "proba", model: "opus-5" },
   });
 
+// clientInfo {name: "claude-code", version: "2.1.273"} — caught by a probe from a
+// live Claude Code handshake, as was Codex's "codex-mcp-client" 0.154.0 (case №39 [3460]).
 test("iskron_stand: a Claude Code handshake gives harness_version — clientInfo.version beside the name", async (t) => {
   const { fake, bridge } = await holderReady(t, {
     init: { ...INIT, clientInfo: { name: "claude-code", version: "2.1.273" } },
@@ -876,6 +880,73 @@ test("iskron_stand: skills of a flat install — the set's bridge version and th
   assert.equal(last.attrs?.harness_version, "2.1.273");
   assert.deepEqual(last.attrs?.skills, { name: SET, version: MINE, stamp: lockFold(lock) });
   assert.notEqual(lockFold(lock), sent[0].attrs.skills.stamp, "the stamp follows the lock");
+});
+
+// The set is named by where it came from (#6211; the lead's word — case №39
+// [5773]): the lock's establish-mcp entry carries the bridge, so its source is
+// the set's name, and only that source's entries fold into the stamp — a fork
+// is not called iskron-ai/skills, and a stranger set beside it does not move it.
+test("iskron_stand: skills of a flat install from a fork — name and stamp follow the establish-mcp entry's source", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "iskron-fork-"));
+  const root = join(home, ".agents", "skills");
+  const file = skillSet(root);
+  const FORK = "someone/skills";
+  const lock = {
+    version: 3,
+    skills: {
+      "establish-mcp": { source: FORK, skillFolderHash: "1".repeat(40) },
+      entry: { source: FORK, skillFolderHash: "2".repeat(40) },
+      iskron: { source: SET, skillFolderHash: "3".repeat(40) },
+      stranger: { source: "someone/else", skillFolderHash: "4".repeat(40) },
+    },
+  };
+  writeFileSync(join(home, ".agents", ".skill-lock.json"), JSON.stringify(lock));
+  const { fake, bridge } = await holderReady(t, { file, env: { HOME: home } });
+  assert.ok(!(await stand(bridge)).result?.isError);
+  const sent = placeSends(fake);
+  assert.ok(sent.length >= 2, JSON.stringify(fake.state.placeArgs));
+  for (const got of sent)
+    assert.deepEqual(got.attrs?.skills, {
+      name: FORK,
+      version: MINE,
+      stamp: lockFold(lock, FORK),
+    });
+});
+
+// A lock without an establish-mcp entry does not say which source carries the
+// bridge: the set keeps the default name and folds that name's entries, as
+// before the fork rule; no entry of it — the SKILL.md hash of the tree.
+test("iskron_stand: skills of a flat install whose lock has no establish-mcp entry — iskron-ai/skills, its entries' fold, else the tree", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "iskron-nobridge-"));
+  const root = join(home, ".agents", "skills");
+  const file = skillSet(root);
+  const lockPath = join(home, ".agents", ".skill-lock.json");
+  const lock = {
+    version: 3,
+    skills: {
+      entry: { source: SET, skillFolderHash: "5".repeat(40) },
+      stranger: { source: "someone/else", skillFolderHash: "6".repeat(40) },
+    },
+  };
+  writeFileSync(lockPath, JSON.stringify(lock));
+  const { fake, bridge } = await holderReady(t, { file, env: { HOME: home } });
+  assert.ok(!(await stand(bridge)).result?.isError);
+  assert.deepEqual(placeSends(fake).at(-1).attrs?.skills, {
+    name: SET,
+    version: MINE,
+    stamp: lockFold(lock),
+  });
+
+  writeFileSync(
+    lockPath,
+    JSON.stringify({ version: 3, skills: { stranger: lock.skills.stranger } }),
+  );
+  assert.ok(!(await stand(bridge)).result?.isError);
+  assert.deepEqual(placeSends(fake).at(-1).attrs?.skills, {
+    name: SET,
+    version: MINE,
+    stamp: treeStamp(root),
+  });
 });
 
 test("iskron_stand: skills of a set named by ISKRON_SKILLS_ROOT — its own bridge version and SKILL.md hash; our client's host version from the environment", async (t) => {

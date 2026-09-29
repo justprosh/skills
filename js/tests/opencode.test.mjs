@@ -358,6 +358,8 @@ test("every bridge tool stands under its own name, with the server's JSON Schema
 // The plugin is the bridge's handshake client, so clientInfo names the plugin,
 // not OpenCode: the host's own version rides to the bridge in its environment
 // (ctx.app.version), for attrs.harness_version (#6226). No app — none is claimed.
+// ctx.app {name, version, channel} — from the types of @opencode/plugin 2.0.4
+// (app.d.ts) only; a live OpenCode's ctx.app is not observed.
 test("the plugin hands OpenCode's own version to the bridge it raises", async () => {
   const envLog = join(SANDBOX, "host-version.env");
   const b = bridgeEnv("host-version", { FB_ENV: envLog });

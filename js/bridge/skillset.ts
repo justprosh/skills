@@ -37,19 +37,26 @@ export function skillsRoot(self = fileURLToPath(import.meta.url)): string | null
 
 const sha8 = (h: ReturnType<typeof createHash>): string => h.digest("hex").slice(0, 8);
 
-/** Плоская установка: свёртка skillFolderHash записей набора в .skill-lock.json рядом с корнем. */
-function lockStamp(root: string): string | null {
+/**
+ * Плоская установка: источник набора — source записи establish-mcp в
+ * .skill-lock.json рядом с корнем (она несёт мост; решение ведущего — дело №39
+ * [5773]), без неё — SET; stamp — свёртка skillFolderHash записей этого источника.
+ */
+function lockSet(root: string): { name: string; stamp: string | null } {
   try {
     const lock = JSON.parse(readFileSync(join(dirname(root), ".skill-lock.json"), "utf8")) as {
       skills?: Record<string, { source?: unknown; skillFolderHash?: unknown }>;
     };
-    const lines = Object.entries(lock.skills ?? {})
-      .filter(([, s]) => s?.source === SET && typeof s.skillFolderHash === "string")
+    const skills = lock.skills ?? {};
+    const own = skills["establish-mcp"]?.source;
+    const name = typeof own === "string" && own.trim() ? own.trim() : SET;
+    const lines = Object.entries(skills)
+      .filter(([, s]) => s?.source === name && typeof s.skillFolderHash === "string")
       .map(([n, s]) => `${n}:${String(s.skillFolderHash)}\n`)
       .sort();
-    return lines.length ? sha8(createHash("sha256").update(lines.join(""))) : null;
+    return { name, stamp: lines.length ? sha8(createHash("sha256").update(lines.join(""))) : null };
   } catch {
-    return null;
+    return { name: SET, stamp: null };
   }
 }
 
@@ -88,6 +95,7 @@ export function skillsAttr(): { name: string; version: string; stamp?: string } 
   } catch {
     /* файл моста исчез между поиском и чтением — версия неизвестна */
   }
-  const stamp = lockStamp(root) ?? treeStamp(root);
-  return { name: SET, version, ...(stamp ? { stamp } : {}) };
+  const lock = lockSet(root);
+  const stamp = lock.stamp ?? treeStamp(root);
+  return { name: lock.name, version, ...(stamp ? { stamp } : {}) };
 }
