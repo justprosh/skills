@@ -84,6 +84,16 @@ copyFileSync(SOURCE, COPY);
 // homedir() is the second bridge candidate. Moving HOME both frees the probe to
 // decide that candidate and guarantees a real ~/.iskron-bridge is never touched.
 process.env.HOME = SANDBOX;
+// The pi package as the extension resolves it from its own directory — only its
+// VERSION, the host version the extension hands the bridge (#6226).
+const PI_VERSION = "0.85.1-probe";
+const PI_PKG = join(SANDBOX, "node_modules", "@earendil-works", "pi-coding-agent");
+mkdirSync(PI_PKG, { recursive: true });
+writeFileSync(
+  join(PI_PKG, "package.json"),
+  JSON.stringify({ name: "@earendil-works/pi-coding-agent", type: "module", main: "index.js" }),
+);
+writeFileSync(join(PI_PKG, "index.js"), `export const VERSION = ${JSON.stringify(PI_VERSION)};\n`);
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -154,6 +164,8 @@ const ENV_KEYS = [
   "FB_REPLY",
   "FB_CALLS",
   "FB_STAND_HELD",
+  "FB_ENV",
+  "ISKRON_HARNESS_VERSION",
   "ISKRON_SATELLITE_OF",
   "ISKRON_PI_ASIDE_MS",
 ];
@@ -422,6 +434,21 @@ test("bridge raised: every server tool stands in the session under its own name"
     assert.deepEqual(channel.parameters.required, ["action"]);
     // The prompt line is one sentence of the description, not the whole of it.
     assert.equal(channel.promptSnippet, "Живой канал делателя.");
+  } finally {
+    await rec.stop();
+  }
+});
+
+// The extension is the bridge's handshake client, so clientInfo names the
+// extension, not pi: pi's own VERSION rides to the bridge in its environment,
+// for attrs.harness_version (#6226).
+test("the extension hands pi's own version to the bridge it raises", async () => {
+  const envLog = join(SANDBOX, "host-version.env");
+  const { env } = bridgeEnv("host-version", { FB_ENV: envLog });
+  const rec = await session(env);
+  try {
+    const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(seen[0]?.harness_version, PI_VERSION, JSON.stringify(seen));
   } finally {
     await rec.stop();
   }

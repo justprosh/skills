@@ -20,7 +20,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { Bridge, resultToContent, snippet, toParameters } from "../shared/bridge-client.ts";
-import { PI_CLIENT } from "../shared/clients.ts";
+import { HARNESS_VERSION_ENV, PI_CLIENT } from "../shared/clients.ts";
 import { enterCase, type LaunchCall, parseLaunch, withWord } from "../shared/launch.ts";
 import { findBridge, type Notify, refreshHomeBridge } from "./home-copy.ts";
 import { setupUsage } from "./usage.ts";
@@ -49,6 +49,22 @@ function textOrThrow(name: string, result: any): string {
     .join("\n");
   if (result?.isError) throw new Error(text || `${name}: отказ без текста`);
   return text;
+}
+
+/**
+ * Версия pi для attrs.harness_version (#6226): клиент рукопожатия — это расширение,
+ * и мост узнаёт версию хоста только окружением. Пакет pi — внешний, берётся у
+ * загрузчика; не отдал — ничего не объявляем, мост скажет "unknown".
+ */
+async function hostEnv(): Promise<Record<string, string>> {
+  try {
+    const { VERSION } = await import("@earendil-works/pi-coding-agent");
+    return typeof VERSION === "string" && VERSION.trim()
+      ? { [HARNESS_VERSION_ENV]: VERSION.trim() }
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /** Вызов тула мостом — для строки запуска. */
@@ -94,6 +110,7 @@ export function setupBridge(pi: ExtensionAPI, onChannel: ChannelEventSink): void
       return;
     }
 
+    const env = await hostEnv();
     const b = new Bridge(
       found.path,
       (line) => notify(`Искрон/мост: ${line}`, "info"),
@@ -112,7 +129,7 @@ export function setupBridge(pi: ExtensionAPI, onChannel: ChannelEventSink): void
     );
     bridge = b;
     satellite = args.includes("--satellite");
-    b.start();
+    b.start(env);
 
     // Отказ «нужен вход» — не поломка: мост опубликовал вход и держит его
     // слушателем на своём порту; погасить мост значило бы увести клик человека в

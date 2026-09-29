@@ -19,6 +19,7 @@
 // всегда), а список с сервера приходит фоном и подменяется через
 // ctx.tool.reload() — сколько бы ни длился вход человека.
 import { Bridge, toParameters } from "../shared/bridge-client.ts";
+import { HARNESS_VERSION_ENV } from "../shared/clients.ts";
 import {
   authDir,
   buildsLine,
@@ -72,6 +73,15 @@ export interface Slot extends KeptSlot, SatelliteSlot {
 }
 
 const hhmm = (): string => new Date().toTimeString().slice(0, 5);
+
+/**
+ * Версия самого OpenCode — мосту окружением (#6226): клиент рукопожатия — этот
+ * плагин, и его clientInfo.version не версия хоста. Нет app — ничего не объявляем.
+ */
+function hostEnvOf(ctx: Context): Record<string, string> {
+  const v = (ctx as { app?: { version?: unknown } | null }).app?.version;
+  return typeof v === "string" && v.trim() ? { [HARNESS_VERSION_ENV]: v.trim() } : {};
+}
 
 export interface ToolsHalf {
   /** Сессия умерла — её мост отпускается вместе со стоянием. */
@@ -156,7 +166,7 @@ export async function setupTools(
       },
       args,
     );
-    slot.bridge.start();
+    slot.bridge.start(hostEnvOf(ctx));
     shake(slot);
     return slot;
   }

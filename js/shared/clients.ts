@@ -21,3 +21,9 @@ export const OWN_CLIENTS: ReadonlySet<string> = new Set([OPENCODE_CLIENT, SURFAC
 // сам (bridge/leave.ts, граф nks-dev: #4895).
 export const PI_CLIENT = "pi-iskron";
 export const NOTIFIED_CLIENTS: ReadonlySet<string> = new Set([PI_CLIENT, OPENCODE_CLIENT]);
+
+// Версия хоста для attrs.harness_version (граф nks-dev: #6226). Плагину OpenCode
+// и расширению pi клиент рукопожатия — они сами, и clientInfo.version — их версия,
+// не хоста: версию OpenCode и pi они передают мосту этой переменной при запуске.
+export const HARNESS_VERSION_ENV = "ISKRON_HARNESS_VERSION";
+export const HOSTED_CLIENTS: ReadonlySet<string> = new Set([PI_CLIENT, OPENCODE_CLIENT]);

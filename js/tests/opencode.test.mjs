@@ -133,7 +133,13 @@ function registry() {
   };
 }
 
-function fakeCtx({ sessions = [], skills = [], gone = new Set(), inboxIds = false } = {}) {
+function fakeCtx({
+  sessions = [],
+  skills = [],
+  gone = new Set(),
+  inboxIds = false,
+  app = { name: "opencode", version: "2.0.18-probe", channel: "latest" },
+} = {}) {
   const prompts = [];
   const hooks = {};
   const tools = registry();
@@ -142,6 +148,7 @@ function fakeCtx({ sessions = [], skills = [], gone = new Set(), inboxIds = fals
   let wake = null;
   const stderr = [];
   const ctx = {
+    app,
     tool: { transform: tools.transform, reload: tools.reload },
     command: { transform: commands.transform, reload: commands.reload },
     session: {
@@ -223,6 +230,8 @@ const ENV_KEYS = [
   "FB_INITS",
   "FB_NET_UP",
   "FB_DIE_ONCE",
+  "FB_ENV",
+  "ISKRON_HARNESS_VERSION",
   "ISKRON_BRIDGE_WATCH_MS",
   "ISKRON_BRIDGE_URL",
   "ISKRON_BRIDGE_TOKEN",
@@ -343,6 +352,35 @@ test("every bridge tool stands under its own name, with the server's JSON Schema
     );
   } finally {
     await rec.stop();
+  }
+});
+
+// The plugin is the bridge's handshake client, so clientInfo names the plugin,
+// not OpenCode: the host's own version rides to the bridge in its environment
+// (ctx.app.version), for attrs.harness_version (#6226). No app — none is claimed.
+test("the plugin hands OpenCode's own version to the bridge it raises", async () => {
+  const envLog = join(SANDBOX, "host-version.env");
+  const b = bridgeEnv("host-version", { FB_ENV: envLog });
+  const rec = await plugin(b.env, {
+    app: { name: "opencode", version: "2.0.18", channel: "latest" },
+  });
+  try {
+    await serverTools(rec);
+    const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(seen[0]?.harness_version, "2.0.18", JSON.stringify(seen));
+  } finally {
+    await rec.stop();
+  }
+  const bareLog = join(SANDBOX, "host-version-bare.env");
+  const bare = await plugin(bridgeEnv("host-version-bare", { FB_ENV: bareLog }).env, {
+    app: null,
+  });
+  try {
+    await serverTools(bare);
+    const seen = readFileSync(bareLog, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(seen[0]?.harness_version, null, "no app — the plugin claims no version");
+  } finally {
+    await bare.stop();
   }
 });
 
