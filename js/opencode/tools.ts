@@ -101,6 +101,7 @@ export async function setupTools(
   }
   const path = found.path;
   const builds = buildsLine(path, import.meta.url);
+  const hostEnv = await hostEnvOf(ctx); // версия OpenCode и корень набора — раз на плагин
 
   const slots = new Map<string, Slot>();
   let spare: Slot | null = null;
@@ -157,7 +158,7 @@ export async function setupTools(
       },
       args,
     );
-    slot.bridge.start(hostEnvOf(ctx));
+    slot.bridge.start(hostEnv);
     shake(slot);
     return slot;
   }

@@ -168,6 +168,7 @@ const ENV_KEYS = [
   "FB_STAND_HELD",
   "FB_ENV",
   "ISKRON_HARNESS_VERSION",
+  "ISKRON_SKILLS_ROOT",
   "ISKRON_SATELLITE_OF",
   "ISKRON_PI_ASIDE_MS",
 ];
@@ -178,15 +179,15 @@ let seq = 0;
  * read at module load, so the query string is what lets one test be slow and
  * the next one quick.
  */
-async function loadFactory(env = {}) {
+async function loadFactory(env = {}, copy = COPY) {
   for (const k of ENV_KEYS) delete process.env[k];
   for (const [k, v] of Object.entries(env)) process.env[k] = String(v);
-  return (await import(`${pathToFileURL(COPY).href}?n=${++seq}`)).default;
+  return (await import(`${pathToFileURL(copy).href}?n=${++seq}`)).default;
 }
 
 /** A live session: factory called, session_start fired, shutdown at hand. */
 async function session(env = {}, opts = {}) {
-  const factory = await loadFactory(env);
+  const factory = await loadFactory(env, opts.copy);
   const rec = fakePi(opts);
   factory(rec.pi);
   await rec.fire("session_start");
@@ -451,6 +452,29 @@ test("the extension hands pi's own version to the bridge it raises", async () =>
   try {
     const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(seen[0]?.harness_version, PI_VERSION, JSON.stringify(seen));
+    assert.equal(seen[0]?.skills_root, null, "no package beside the extension — no set is named");
+  } finally {
+    await rec.stop();
+  }
+});
+
+// The set the bridge names in attrs.skills is the package the extension came
+// with (#6226): a bridge from elsewhere (ISKRON_BRIDGE_PATH, the home copy)
+// knows it only from the environment.
+test("the extension installed as a package hands its skill set's root to the bridge it raises", async () => {
+  const pkg = join(SANDBOX, "pkg");
+  const scripts = join(pkg, "skills", "establish-mcp", "scripts");
+  mkdirSync(join(pkg, "extensions"), { recursive: true });
+  mkdirSync(scripts, { recursive: true });
+  writeFileSync(join(scripts, "iskron.mjs"), "");
+  const copy = join(pkg, "extensions", "iskron.mjs");
+  copyFileSync(SOURCE, copy);
+  const envLog = join(SANDBOX, "skills-root.env");
+  const { env } = bridgeEnv("skills-root", { FB_ENV: envLog });
+  const rec = await session(env, { copy });
+  try {
+    const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(seen[0]?.skills_root, join(pkg, "skills"), JSON.stringify(seen));
   } finally {
     await rec.stop();
   }

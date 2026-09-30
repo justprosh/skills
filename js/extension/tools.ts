@@ -17,12 +17,15 @@
 // ровно то, что строит `StringEnum` из @earendil-works/pi-ai
 // (`Type.Unsafe({type:"string",enum})`), поэтому оговорка доков про Google
 // исполнена сама собой, и конвертировать нечего.
+import { existsSync } from "node:fs";
+import { dirname } from "node:path";
+
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { Bridge, resultToContent, snippet, toParameters } from "../shared/bridge-client.ts";
-import { HARNESS_VERSION_ENV, PI_CLIENT } from "../shared/clients.ts";
+import { HARNESS_VERSION_ENV, PI_CLIENT, SKILLS_ROOT_ENV } from "../shared/clients.ts";
 import { enterCase, type LaunchCall, parseLaunch, withWord } from "../shared/launch.ts";
-import { findBridge, type Notify, refreshHomeBridge } from "./home-copy.ts";
+import { findBridge, type Notify, packagedBridgePath, refreshHomeBridge } from "./home-copy.ts";
 import { setupUsage } from "./usage.ts";
 
 export type ChannelEventSink = (params: any) => void;
@@ -52,19 +55,27 @@ function textOrThrow(name: string, result: any): string {
 }
 
 /**
- * Версия pi для attrs.harness_version (#6226): клиент рукопожатия — это расширение,
- * и мост узнаёт версию хоста только окружением. Пакет pi — внешний, берётся у
- * загрузчика; не отдал — ничего не объявляем, мост скажет "unknown".
+ * Что мост узнаёт о хосте только окружением (#6226). Версия pi: клиент
+ * рукопожатия — это расширение; пакет pi — внешний, берётся у загрузчика; не
+ * отдал — ничего не объявляем, мост скажет "unknown". Корень набора: пакет, с
+ * которым приехало расширение, — мост из ISKRON_BRIDGE_PATH или домашняя копия
+ * лежит вне него; пакета рядом нет — корня не называем.
  */
 async function hostEnv(): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
+  try {
+    const bridge = packagedBridgePath();
+    if (existsSync(bridge)) env[SKILLS_ROOT_ENV] = dirname(dirname(dirname(bridge)));
+  } catch {
+    /* загрузчик не дал собственного пути — корня не называем */
+  }
   try {
     const { VERSION } = await import("@earendil-works/pi-coding-agent");
-    return typeof VERSION === "string" && VERSION.trim()
-      ? { [HARNESS_VERSION_ENV]: VERSION.trim() }
-      : {};
+    if (typeof VERSION === "string" && VERSION.trim()) env[HARNESS_VERSION_ENV] = VERSION.trim();
   } catch {
-    return {};
+    /* pi не отдал свой пакет — версии не объявляем */
   }
+  return env;
 }
 
 /** Вызов тула мостом — для строки запуска. */

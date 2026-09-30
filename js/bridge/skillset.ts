@@ -9,10 +9,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SKILLS_ROOT_ENV } from "../shared/clients.ts";
 import { versionIn } from "../shared/version.ts";
 
 /** Корень набора окружением: домашняя копия лежит вне набора и узнаёт его только так. */
-export const SKILLS_ROOT_ENV = "ISKRON_SKILLS_ROOT";
+export { SKILLS_ROOT_ENV };
 const SET = "iskron-ai/skills";
 const BRIDGE_IN_SET = join("establish-mcp", "scripts", "iskron.mjs");
 

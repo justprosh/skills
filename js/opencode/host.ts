@@ -1,15 +1,33 @@
 // Что хост плагина — сам OpenCode — говорит о себе и о сессии, для половины
 // «тулы» (tools.ts). Из plugin.ts здесь только тип — рантайм-цикла импорта нет.
-import { HARNESS_VERSION_ENV } from "../shared/clients.ts";
+import { dirname } from "node:path";
+
+import { HARNESS_VERSION_ENV, SKILLS_ROOT_ENV } from "../shared/clients.ts";
 import type { Context } from "./plugin.ts";
 
 /**
- * Версия самого OpenCode — мосту окружением (#6226): клиент рукопожатия — этот
- * плагин, и его clientInfo.version не версия хоста. Нет app — ничего не объявляем.
+ * Что мост узнаёт о хосте только окружением (#6226). Версия самого OpenCode:
+ * клиент рукопожатия — этот плагин, и его clientInfo.version не версия хоста;
+ * нет app — ничего не объявляем. Корень набора: мост плагина — домашняя копия
+ * вне набора, а набор — тот, откуда OpenCode загрузил establish-mcp
+ * (ctx.skill.list(), как читают команды); такого скилла нет — корня не называем.
  */
-export function hostEnvOf(ctx: Context): Record<string, string> {
+export async function hostEnvOf(ctx: Context): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
   const v = (ctx as { app?: { version?: unknown } | null }).app?.version;
-  return typeof v === "string" && v.trim() ? { [HARNESS_VERSION_ENV]: v.trim() } : {};
+  if (typeof v === "string" && v.trim()) env[HARNESS_VERSION_ENV] = v.trim();
+  try {
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- ответ хоста без схемы */
+    const res: any = await ctx.skill.list();
+    const list: unknown[] = Array.isArray(res) ? res : (res?.data ?? []);
+    const own = list.find((s) => (s as { id?: unknown })?.id === "establish-mcp") as
+      { path?: unknown } | undefined;
+    if (typeof own?.path === "string" && own.path)
+      env[SKILLS_ROOT_ENV] = dirname(dirname(own.path));
+  } catch {
+    /* список скиллов не прочитался — мост найдёт набор сам или скажет "unknown" */
+  }
+  return env;
 }
 
 /**

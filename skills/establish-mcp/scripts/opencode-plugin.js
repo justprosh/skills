@@ -111,6 +111,7 @@ function isDirectWord(frame) {
 // js/shared/clients.ts
 var OPENCODE_CLIENT = "opencode-iskron";
 var HARNESS_VERSION_ENV = "ISKRON_HARNESS_VERSION";
+var SKILLS_ROOT_ENV = "ISKRON_SKILLS_ROOT";
 
 // js/shared/version.ts
 import { createHash } from "node:crypto";
@@ -956,9 +957,20 @@ async function refreshToolList(b, state2, reload, say, live) {
 }
 
 // js/opencode/host.ts
-function hostEnvOf(ctx) {
+import { dirname } from "node:path";
+async function hostEnvOf(ctx) {
+  const env = {};
   const v = ctx.app?.version;
-  return typeof v === "string" && v.trim() ? { [HARNESS_VERSION_ENV]: v.trim() } : {};
+  if (typeof v === "string" && v.trim()) env[HARNESS_VERSION_ENV] = v.trim();
+  try {
+    const res = await ctx.skill.list();
+    const list = Array.isArray(res) ? res : res?.data ?? [];
+    const own = list.find((s) => s?.id === "establish-mcp");
+    if (typeof own?.path === "string" && own.path)
+      env[SKILLS_ROOT_ENV] = dirname(dirname(own.path));
+  } catch {
+  }
+  return env;
 }
 async function sessionDirectory(ctx, sessionID) {
   try {
@@ -1292,6 +1304,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
   }
   const path = found.path;
   const builds = buildsLine(path, import.meta.url);
+  const hostEnv = await hostEnvOf(ctx);
   const slots = /* @__PURE__ */ new Map();
   let spare = null;
   let stopped = false;
@@ -1338,7 +1351,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
       },
       args
     );
-    slot.bridge.start(hostEnvOf(ctx));
+    slot.bridge.start(hostEnv);
     shake(slot);
     return slot;
   }

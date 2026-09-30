@@ -1527,6 +1527,7 @@ var OWN_CLIENTS = /* @__PURE__ */ new Set([OPENCODE_CLIENT, SURFACE_CLIENT]);
 var PI_CLIENT = "pi-iskron";
 var NOTIFIED_CLIENTS = /* @__PURE__ */ new Set([PI_CLIENT, OPENCODE_CLIENT]);
 var HARNESS_VERSION_ENV = "ISKRON_HARNESS_VERSION";
+var SKILLS_ROOT_ENV = "ISKRON_SKILLS_ROOT";
 var HOSTED_CLIENTS = /* @__PURE__ */ new Set([PI_CLIENT, OPENCODE_CLIENT]);
 
 // js/shared/channel.ts
@@ -3702,7 +3703,6 @@ import { existsSync as existsSync2, readdirSync as readdirSync3, readFileSync as
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname4, join as join8, resolve as resolve4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-var SKILLS_ROOT_ENV = "ISKRON_SKILLS_ROOT";
 var SET = "iskron-ai/skills";
 var BRIDGE_IN_SET = join8("establish-mcp", "scripts", "iskron.mjs");
 var env = (k) => process.env[k]?.trim() ?? "";

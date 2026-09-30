@@ -232,6 +232,7 @@ const ENV_KEYS = [
   "FB_DIE_ONCE",
   "FB_ENV",
   "ISKRON_HARNESS_VERSION",
+  "ISKRON_SKILLS_ROOT",
   "ISKRON_BRIDGE_WATCH_MS",
   "ISKRON_BRIDGE_URL",
   "ISKRON_BRIDGE_TOKEN",
@@ -383,8 +384,32 @@ test("the plugin hands OpenCode's own version to the bridge it raises", async ()
     await until(() => existsSync(bareLog), "the raised bridge");
     const seen = readFileSync(bareLog, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(seen[0]?.harness_version, null, "no app — the plugin claims no version");
+    assert.equal(seen[0]?.skills_root, null, "no establish-mcp among the skills — no set is named");
   } finally {
     await bare.stop();
+  }
+});
+
+// The plugin's bridge is the home copy, outside any set (#6226): the set it
+// names in attrs.skills is the one OpenCode loaded establish-mcp from —
+// ctx.skill.list(), as the commands read it.
+test("the plugin hands the bridge the root of the skill set that carries establish-mcp", async () => {
+  const root = join(SANDBOX, "set-root", "skills");
+  const path = join(root, "establish-mcp", "SKILL.md");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "---\nname: establish-mcp\n---\n");
+  const skills = [
+    { id: "builtin", name: "builtin", description: "x", path: "/builtin/x.md", content: "" },
+    { id: "establish-mcp", name: "establish-mcp", description: "x", path, content: "" },
+  ];
+  const envLog = join(SANDBOX, "skills-root.env");
+  const rec = await plugin(bridgeEnv("skills-root", { FB_ENV: envLog }).env, { skills });
+  try {
+    await until(() => existsSync(envLog), "the raised bridge");
+    const seen = readFileSync(envLog, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(seen[0]?.skills_root, root, JSON.stringify(seen));
+  } finally {
+    await rec.stop();
   }
 });
 
