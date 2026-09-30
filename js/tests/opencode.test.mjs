@@ -1906,13 +1906,13 @@ test("the end of a child session's run takes its bridge down: the watch raises n
 // the case. A call that needs a place is refused aloud with the way back; a
 // read goes by the root's bridge, it signs nothing; iskron_stand raises the
 // child a bridge of its own again, and its writes go by it.
-async function endedChild(name) {
+async function endedChild(name, more = []) {
   const calls = join(SANDBOX, `${name}.calls`);
   writeFileSync(calls, "");
   const b = bridgeEnv(name, {
     FB_CALLS: calls,
     FB_TOOLS: JSON.stringify(
-      ["iskron_stand", "iskron_case", "iskron_look"].map((n) => ({
+      ["iskron_stand", "iskron_case", "iskron_look", ...more].map((n) => ({
         name: n,
         description: "Тул.",
         inputSchema: { type: "object" },
@@ -1952,6 +1952,55 @@ test("a child whose run ended is refused aloud on a call that needs a place — 
     const read = sent().at(-1);
     assert.equal(read?.name, "iskron_look");
     assert.equal(read?.pid, rootPid, "a read goes by the root's bridge");
+  } finally {
+    await rec.stop();
+  }
+});
+
+// Reads of the account tools sign nothing and go by the root's bridge; their
+// writing actions are refused like any call that needs a place (#6361).
+test("a child whose run ended reads realms, orgs, itself and history by the root's bridge; their writing actions are refused", async () => {
+  const { rec, rootPid, sent } = await endedChild("ended-reads", [
+    "iskron_realm",
+    "iskron_org",
+    "iskron_me",
+    "iskron_history",
+  ]);
+  try {
+    const reads = [
+      ["iskron_realm", "list"],
+      ["iskron_org", "list"],
+      ["iskron_org", "get"],
+      ["iskron_org", "list_members"],
+      ["iskron_me", "whoami"],
+      ["iskron_history", "node"],
+    ];
+    for (const [tool, action] of reads) {
+      await rec.call(tool, { action }, "child");
+      assert.deepEqual([sent().at(-1)?.name, sent().at(-1)?.pid], [tool, rootPid], action);
+    }
+    const before = sent().length;
+    for (const [tool, action] of [
+      ["iskron_realm", "create"],
+      ["iskron_org", "add_member"],
+      ["iskron_me", "set_handle"],
+      ["iskron_history", "restore_node"],
+    ])
+      await assert.rejects(rec.call(tool, { action }, "child"), /кончился[\s\S]*iskron_stand/);
+    assert.equal(sent().length, before, "no refused call reached a bridge");
+  } finally {
+    await rec.stop();
+  }
+});
+
+// A deleted session leaves no mark behind: the plugin forgets it whole.
+test("a deleted child session takes its run-ended mark with it", async () => {
+  const { rec, sent } = await endedChild("ended-deleted");
+  try {
+    rec.emit({ type: "session.deleted", data: { sessionID: "child" } });
+    await delay(200);
+    await rec.call("iskron_case", { action: "say" }, "child");
+    assert.equal(sent().at(-1)?.name, "iskron_case", "the mark is gone, the call is not refused");
   } finally {
     await rec.stop();
   }

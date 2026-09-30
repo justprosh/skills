@@ -393,7 +393,7 @@ export async function setupTools(
     // Отказ тула сигналится броском — так OpenCode показывает его отказом.
     if (result?.isError) throw new Error(textOf(result) || `${name}: отказ без текста`);
     if (standsBy(name, args)) keeper.stood(slot); // ответ тула — наблюдаемое событие держания
-    if (standsBy(name, args)) runEnds.stood(sessionID); // встал заново — запись снова своим мостом
+    if (standsBy(name, args)) runEnds.clear(sessionID); // встал заново — запись снова своим мостом
     return { content: textOf(result) };
   }
   if (state.listed.length)
@@ -462,6 +462,7 @@ export async function setupTools(
   });
 
   function forget(session: string): void {
+    runEnds.clear(session); // удалённая сессия уносит и пометку конца прогона
     launcher.forget(session);
     keeper.forget(session);
     const slot = slots.get(session);
@@ -475,11 +476,7 @@ export async function setupTools(
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
     forget,
-    ended(session) {
-      if (!slots.get(session)?.child) return;
-      runEnds.mark(session, slots.get(session)?.satelliteOf);
-      forget(session);
-    },
+    ended: (s) => void (slots.get(s)?.child && runEnds.end(s, slots.get(s)?.satelliteOf, forget)),
     stop() {
       stopped = true;
       clearInterval(reaper);

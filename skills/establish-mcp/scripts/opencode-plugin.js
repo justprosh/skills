@@ -1271,25 +1271,34 @@ function createLogin(say) {
 }
 
 // js/opencode/runends.ts
-var PLACELESS = /* @__PURE__ */ new Set([
+var READ_TOOLS = /* @__PURE__ */ new Set([
   "iskron_look",
   "iskron_orient",
   "iskron_search",
-  "iskron_semantic_search",
-  "iskron_history",
-  "iskron_me"
+  "iskron_semantic_search"
 ]);
+var READ_ACTIONS = {
+  iskron_channel: /* @__PURE__ */ new Set(["list"]),
+  iskron_realm: /* @__PURE__ */ new Set(["list"]),
+  iskron_org: /* @__PURE__ */ new Set(["list", "get", "realms", "list_members", "list_grants"]),
+  iskron_me: /* @__PURE__ */ new Set(["whoami", "orgs", "kartas", "usage"]),
+  iskron_history: /* @__PURE__ */ new Set(["realm", "node", "delta"])
+};
 function createRunEnds() {
   const ended = /* @__PURE__ */ new Map();
   return {
-    mark: (session, of) => void ended.set(session, of ?? null),
-    stood: (session) => void ended.delete(session),
+    end(session, of, forget) {
+      forget(session);
+      ended.set(session, of ?? null);
+    },
+    clear: (session) => void ended.delete(session),
     guard(session, name, args) {
-      if (!ended.has(session) || name === STAND_TOOL || PLACELESS.has(name)) return;
-      if (args.action === "?" || name === "iskron_channel" && args.action === "list") return;
+      if (!ended.has(session) || name === STAND_TOOL || READ_TOOLS.has(name)) return;
+      const action = String(args.action ?? "");
+      if (action === "?" || READ_ACTIONS[name]?.has(action)) return;
       const of = ended.get(session)?.name ?? "<место запустившего>";
       throw new Error(
-        `Отказано (плагин): прогон этой дочерней сессии кончился, её место-спутник отпущено — ${name} подписал бы запись местом запустившего. Встань заново: iskron_stand(realm, karta, satellite_of="${of}"), затем повтори вызов.`
+        `Отказано (плагин): прогон этой дочерней сессии кончился, её место-спутник отпущено — ${name}${action ? ` (${action})` : ""} пошёл бы мостом и местом запустившего. Встань заново: iskron_stand(realm, karta, satellite_of="${of}"), затем повтори вызов.`
       );
     }
   };
@@ -1543,7 +1552,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     const result = await slot.bridge.request("tools/call", { name, arguments: args });
     if (result?.isError) throw new Error(textOf2(result) || `${name}: отказ без текста`);
     if (standsBy(name, args)) keeper.stood(slot);
-    if (standsBy(name, args)) runEnds.stood(sessionID);
+    if (standsBy(name, args)) runEnds.clear(sessionID);
     return { content: textOf2(result) };
   }
   if (state2.listed.length)
@@ -1602,6 +1611,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     }
   });
   function forget(session) {
+    runEnds.clear(session);
     launcher.forget(session);
     keeper.forget(session);
     const slot = slots.get(session);
@@ -1614,11 +1624,7 @@ async function setupTools(ctx, say, onChannel, rootOf) {
     launch: launcher.launch,
     bridgeOf: (s) => [slots.get(s)].find((x) => x?.holding)?.bridge ?? null,
     forget,
-    ended(session) {
-      if (!slots.get(session)?.child) return;
-      runEnds.mark(session, slots.get(session)?.satelliteOf);
-      forget(session);
-    },
+    ended: (s) => void (slots.get(s)?.child && runEnds.end(s, slots.get(s)?.satelliteOf, forget)),
     stop() {
       stopped = true;
       clearInterval(reaper);
